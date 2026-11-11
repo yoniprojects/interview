@@ -180,7 +180,7 @@ var FB_CONFIG={apiKey:"AIzaSyBksmxT9fDiBcgZiMmWCvIX_wlZmmWxp3g",authDomain:"inte
 /* ================================================================= */
 var anim=false,lastJ={},shownSync='',db=null,sync='off',first={q:true,t:true,k:true};
 function fbErr(e){sync='err';console.error(e);softRender()}
-function cQ(q){if(db)db.collection('visaprep_questions').doc(q.id).set({text:q.text,by:q.by||'',answers:q.answers||{},about:q.about||'',created:q.created||Date.now()}).catch(fbErr)}
+function cQ(q){if(db)db.collection('visaprep_questions').doc(q.id).set({text:q.text,by:q.by||'',answers:q.answers||{},about:q.about||'',archived:!!q.archived,created:q.created||Date.now()}).catch(fbErr)}
 function cK(f){if(db)db.collection('visaprep_tech').doc(f.id).set({text:f.text,answer:f.answer,by:f.by||'',created:f.created||Date.now()}).catch(fbErr)}
 function cT(t){if(db)db.collection('visaprep_tests').doc(t.id).set(t).catch(fbErr)}
 function rr(k,arr){var j=JSON.stringify(arr),ch=lastJ[k]!==j||shownSync!==sync;lastJ[k]=j;shownSync=sync;if(ch)softRender()}
@@ -253,20 +253,50 @@ function render(){
   if(adding&&$('nq'))$('nq').focus();
 }
 
+function has(q,n){return !!(q.answers[n]||'').trim()}
+function anyAns(q){return q.about?has(q,q.about):(has(q,'Tom')||has(q,'Yoni'))}
+function refAns(q,taker){if(q.about)return q.answers[q.about]||'';var o=taker==='Tom'?'Yoni':'Tom';return has(q,o)?q.answers[o]:(q.answers[taker]||'')}
+function qCard(q,o){
+  var theirs=q.answers[o]||'',sub=q.about&&q.about!==user,tg=sub?'About '+q.about:q.about?'About you':'';
+  var byPartner=!q.about&&has(q,o)&&!has(q,user);
+  if(!sub)tg+=(tg&&anyAns(q)?' · ':'')+(anyAns(q)?(byPartner?'Answered by '+o:'Answered'):(tg?'':'To answer'));
+  var sel='<select onchange="setAbout(\''+q.id+'\',this.value)" aria-label="Who is it about"><option value="">About both</option>'+NAMES.map(function(n){return '<option value="'+n+'"'+(q.about===n?' selected':'')+'>About '+n+'</option>'}).join('')+'</select>';
+  var dup=q.about?'<button class="s" onclick="dupBoth(\''+q.id+'\')">Duplicate to both</button>':'';
+  return '<div class="card rb'+(anyAns(q)||sub?' done':'')+'"><span class="tag">'+tg+'</span><div class="qt">'+esc(q.text)+'</div>'
+  +(sub?'<p class="mu" style="margin:0">Only '+q.about+' answers this one — you’ll be tested on it.</p>':(byPartner?'<p class="mu" style="margin:0 0 8px">'+o+' already answered this — one answer is enough, and you’ll both be tested against it.</p>':'')+'<div class="lbl">Your answer'+(byPartner?' (optional)':'')+'</div><textarea id="a'+q.id+'" placeholder="Write your answer…">'+esc(q.answers[user]||'')+'</textarea>')
+  +'<div class="row">'+(sub?'':'<button class="b" onclick="saveA(\''+q.id+'\',this)">Save answer</button>')+'<button class="s" onclick="editQ(\''+q.id+'\')">Edit question</button><button class="s" onclick="archQ(\''+q.id+'\',true)">Archive</button><button class="s" onclick="delQ(\''+q.id+'\')">Delete</button>'+sel+dup+'</div>'
+  +(q.about&&!sub?'':'<details'+(byPartner?' open':'')+'><summary>'+o+'’s answer'+(theirs?'':' (none yet)')+'</summary><div class="box">'+(theirs?esc(theirs):'—')+'</div></details>')+'</div>';
+}
+function qHead(t,n){return '<div class="row sp" style="margin:16px 4px 0"><b>'+t+'</b><span class="mu">'+n+'</span></div>'}
 function viewQ(){
   var v=$('view'),o=other(),h='';
+  var act=S.questions.filter(function(q){return !q.archived}),arc=S.questions.filter(function(q){return q.archived});
+  var sub=function(q){return q.about&&q.about!==user},ans=function(q){return anyAns(q)};
+  var todo=act.filter(function(q){return !sub(q)&&!ans(q)}),
+      done=act.filter(function(q){return !sub(q)&&ans(q)}),
+      theirsQ=act.filter(sub);
   if(!S.questions.length)h='<div class="card full"><b>No questions yet.</b><p class="mu">Tap the + to paste in your list.</p></div>';
-  else h='<div class="card full" style="padding:12px 18px"><div class="row sp" style="margin:0"><span class="mu">'+S.questions.length+' question'+(S.questions.length>1?'s':'')+'</span><button class="s" onclick="bulk=\'q\';render()">✏️ Edit all questions</button></div></div>';
-  S.questions.forEach(function(q){
-    var theirs=q.answers[o]||'',sub=q.about&&q.about!==user,tg=sub?'About '+q.about:q.about?'About you':'';
-    if(!sub)tg+=(tg&&q.answers[user]?' · ':'')+(q.answers[user]?'Answered':(tg?'':'To answer'));
-    var sel='<select onchange="setAbout(\''+q.id+'\',this.value)" aria-label="Who is it about"><option value="">About both</option>'+NAMES.map(function(n){return '<option value="'+n+'"'+(q.about===n?' selected':'')+'>About '+n+'</option>'}).join('')+'</select>';
-    h+='<div class="card rb'+(q.answers[user]||sub?' done':'')+'"><span class="tag">'+tg+'</span><div class="qt">'+esc(q.text)+'</div>'
-    +(sub?'<p class="mu" style="margin:0">Only '+q.about+' answers this one — you’ll be tested on it.</p>':'<div class="lbl">Your answer</div><textarea id="a'+q.id+'" placeholder="Write your answer…">'+esc(q.answers[user]||'')+'</textarea>')
-    +'<div class="row">'+(sub?'':'<button class="b" onclick="saveA(\''+q.id+'\',this)">Save answer</button>')+'<button class="s" onclick="editQ(\''+q.id+'\')">Edit question</button><button class="s" onclick="delQ(\''+q.id+'\')">Delete</button>'+sel+'</div>'
-    +(q.about&&!sub?'':'<details><summary>'+o+'’s answer'+(theirs?'':' (none yet)')+'</summary><div class="box">'+(theirs?esc(theirs):'—')+'</div></details>')+'</div>';
-  });
+  else{
+    h='<div class="card full" style="padding:12px 18px"><div class="row sp" style="margin:0"><span class="mu">'+act.length+' active question'+(act.length===1?'':'s')+'</span><button class="s" onclick="bulk=\'q\';render()">✏️ Edit all questions</button></div></div>';
+    h+=qHead('To answer',todo.length);
+    h+=todo.length?todo.map(function(q){return qCard(q,o)}).join(''):'<div class="card full"><p class="mu" style="margin:0">All caught up 🎉</p></div>';
+    if(done.length)h+=qHead('Answered',done.length)+done.map(function(q){return qCard(q,o)}).join('');
+    if(theirsQ.length)h+=qHead('About '+o+' only',theirsQ.length)+theirsQ.map(function(q){return qCard(q,o)}).join('');
+    if(arc.length){
+      h+='<details class="card full" style="margin-top:16px"><summary><b>Archived</b> <span class="mu">('+arc.length+')</span></summary>'
+      +arc.map(function(q){
+        return '<div style="padding:12px 0;border-top:1px solid rgba(140,100,70,.15);margin-top:10px"><div class="qt">'+esc(q.text)+'</div><div class="mu" style="font-size:.85rem">'+(q.about?'About '+q.about:'About both')+'</div><div class="row"><button class="b" onclick="archQ(\''+q.id+'\',false)">Restore</button><button class="s" onclick="editQ(\''+q.id+'\')">Edit question</button><button class="s" onclick="delQ(\''+q.id+'\')">Delete</button></div></div>'
+      }).join('')+'</details>';
+    }
+  }
   v.innerHTML=h;
+}
+function archQ(id,f){var q=getQ(id);q.archived=!!f;save();if(db)db.collection('visaprep_questions').doc(id).update({archived:!!f}).catch(fbErr);render()}
+function dupBoth(id){
+  var q=getQ(id),a={};if(!q||!q.about)return;
+  if((q.answers[q.about]||'').trim())a[q.about]=q.answers[q.about];
+  var n={id:uid(),text:q.text,by:user,about:'',answers:a,created:Date.now()};
+  S.questions.push(n);cQ(n);save();render();
 }
 function setAbout(id,v){var q=getQ(id);q.about=v;save();if(db)db.collection('visaprep_questions').doc(id).update({about:v}).catch(fbErr);render()}
 function addQ(){
@@ -283,12 +313,12 @@ function saveA(id,b){var v=$('a'+id).value.trim();getQ(id).answers[user]=v;save(
 function editQ(id){var q=getQ(id),t=prompt('Edit question',q.text);if(t&&t.trim()){q.text=t.trim();save();if(db)db.collection('visaprep_questions').doc(id).update({text:q.text}).catch(fbErr);render()}}
 function delQ(id){if(confirm('Delete this question and both answers?')){S.questions=S.questions.filter(function(x){return x.id!==id});save();if(db)db.collection('visaprep_questions').doc(id).delete().catch(fbErr);render()}}
 
-function pool(){var o=other();return S.questions.filter(function(q){return (q.answers[o]||'').trim()&&(!q.about||q.about===o)})}
+function pool(){var o=other();return S.questions.filter(function(q){return !q.archived&&(!q.about||q.about===o)&&(q.about?has(q,o):anyAns(q))})}
 function viewP(){
   var v=$('view'),o=other();
   if(!run){
     var p=pool();
-    if(!p.length){v.innerHTML='<div class="card"><b>Nothing to practice yet.</b><p class="mu">'+o+' needs to save at least one answer in Questions.</p></div>';return}
+    if(!p.length){v.innerHTML='<div class="card"><b>Nothing to practice yet.</b><p class="mu">Save at least one answer in Questions first (about both, or about '+o+').</p></div>';return}
     v.innerHTML='<div class="big red"><span class="tag">'+p.length+' available</span><h2>Test yourself against '+o+'’s answers</h2><label>How many questions?</label><input id="cnt" type="number" min="1" max="'+p.length+'" value="'+Math.min(10,p.length)+'"><div class="row"><button class="b" onclick="startT()">Start test</button></div></div>';
     return;
   }
@@ -306,7 +336,7 @@ function viewP(){
 function startT(){
   var p=pool(),n=Math.max(1,Math.min(p.length,parseInt($('cnt').value)||1)),o=other();
   for(var i=p.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=p[i];p[i]=p[j];p[j]=t}
-  run={i:0,shown:false,items:p.slice(0,n).map(function(q){return{qid:q.id,q:q.text,ab:q.about||'',ref:q.answers[o],mine:'',ok:null}})};
+  run={i:0,shown:false,items:p.slice(0,n).map(function(q){return{qid:q.id,q:q.text,ab:q.about||'',ref:refAns(q,user),mine:'',ok:null}})};
   render();
 }
 function check(){run.items[run.i].mine=$('ans').value.trim();run.shown=true;render()}
@@ -430,8 +460,8 @@ function trend(s){
 }
 function viewHome(){
   var v=$('view'),m=myStats(),
-  mineQ=S.questions.filter(function(q){return !q.about||q.about===user}),
-  done=mineQ.filter(function(q){return (q.answers[user]||'').trim()}).length,
+  mineQ=S.questions.filter(function(q){return !q.archived&&(!q.about||q.about===user)}),
+  done=mineQ.filter(anyAns).length,
   facts=S.tech.filter(function(f){return f.answer}).length,
   C=2*Math.PI*52,
   miss=Object.keys(m.miss).map(function(k){return m.miss[k]}).sort(function(a,b){return b.n-a.n}).slice(0,5),
