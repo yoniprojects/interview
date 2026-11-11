@@ -261,7 +261,7 @@ function qCard(q,o){
   var byPartner=!q.about&&has(q,o)&&!has(q,user);
   if(!sub)tg+=(tg&&anyAns(q)?' · ':'')+(anyAns(q)?(byPartner?'Answered by '+o:'Answered'):(tg?'':'To answer'));
   var sel='<select onchange="setAbout(\''+q.id+'\',this.value)" aria-label="Who is it about"><option value="">About both</option>'+NAMES.map(function(n){return '<option value="'+n+'"'+(q.about===n?' selected':'')+'>About '+n+'</option>'}).join('')+'</select>';
-  var dup=q.about?'<button class="s" onclick="dupBoth(\''+q.id+'\')">Duplicate to both</button>':'';
+  var dup=q.about?'<button class="s" onclick="dupBoth(\''+q.id+'\')">Duplicate to both</button>':'<button class="s" onclick="splitQ(\''+q.id+'\')">Duplicate for Tom &amp; Yoni</button>';
   return '<div class="card rb'+(anyAns(q)||sub?' done':'')+'"><span class="tag">'+tg+'</span><div class="qt">'+esc(q.text)+'</div>'
   +(sub?'<p class="mu" style="margin:0">Only '+q.about+' answers this one — you’ll be tested on it.</p>':(byPartner?'<p class="mu" style="margin:0 0 8px">'+o+' already answered this — one answer is enough, and you’ll both be tested against it.</p>':'')+'<div class="lbl">Your answer'+(byPartner?' (optional)':'')+'</div><textarea id="a'+q.id+'" placeholder="Write your answer…">'+esc(q.answers[user]||'')+'</textarea>')
   +'<div class="row">'+(sub?'':'<button class="b" onclick="saveA(\''+q.id+'\',this)">Save answer</button>')+'<button class="s" onclick="editQ(\''+q.id+'\')">Edit question</button><button class="s" onclick="archQ(\''+q.id+'\',true)">Archive</button><button class="s" onclick="delQ(\''+q.id+'\')">Delete</button>'+sel+dup+'</div>'
@@ -292,6 +292,14 @@ function viewQ(){
   v.innerHTML=h;
 }
 function archQ(id,f){var q=getQ(id);q.archived=!!f;save();if(db)db.collection('visaprep_questions').doc(id).update({archived:!!f}).catch(fbErr);render()}
+function splitQ(id){
+  var q=getQ(id);if(!q||q.about)return;
+  var ta={},ya={};if(has(q,'Tom'))ta.Tom=q.answers.Tom;if(has(q,'Yoni'))ya.Yoni=q.answers.Yoni;
+  q.about='Tom';q.answers=ta;
+  if(db)db.collection('visaprep_questions').doc(id).update({about:'Tom',answers:ta}).catch(fbErr);
+  var n={id:uid(),text:q.text,by:user,about:'Yoni',answers:ya,created:Date.now()};
+  S.questions.push(n);cQ(n);save();render();
+}
 function dupBoth(id){
   var q=getQ(id),a={};if(!q||!q.about)return;
   if((q.answers[q.about]||'').trim())a[q.about]=q.answers[q.about];
